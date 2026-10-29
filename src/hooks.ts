@@ -981,13 +981,18 @@ function skipWhenAnotherHostLoadsClaudeSettings(def: HookDef, tool: string, lega
 const POSIX_GATE_ROOT_RE = /^if \[ "\$PWD" = ('(?:[^']|'"'"')*') \](?: \|\| \[ "\$PWD" = '(?:[^']|'"'"')*' \])? \|\| case "\$PWD" in /;
 
 /**
- * The project root a POSIX gate was rendered for, or null for an ungated or
- * cmd.exe-gated command. Only the POSIX form is read: it is the one the tools
- * that moved to the main checkout (MAIN_CHECKOUT_TEAM_HOOK_TOOLS) ever wrote.
+ * The project root a POSIX or PowerShell gate was rendered for, or null for an
+ * ungated or cmd.exe-gated command. Both forms can be left in HOME while a
+ * linked worktree moves the main checkout, so stale-copy cleanup must read both.
  */
 function gatedProjectRoot(command: string): string | null {
   const quoted = POSIX_GATE_ROOT_RE.exec(command)?.[1];
-  return quoted ? quoted.slice(1, -1).split(`'"'"'`).join("'") : null;
+  if (quoted) return quoted.slice(1, -1).split(`'"'"'`).join("'");
+
+  // powershellProjectGate starts with the root's native spelling in the first
+  // Equals() operand. PowerShell escapes an embedded apostrophe by doubling it.
+  const powershellRoot = /^\$teamaiPwd = \$PWD\.Path; if \(\(\$teamaiPwd\.Equals\('((?:''|[^'])*)', \[StringComparison\]::OrdinalIgnoreCase\)/.exec(command)?.[1];
+  return powershellRoot?.replace(/''/g, "'").replace(/\\\\/g, '\\') ?? null;
 }
 
 /**

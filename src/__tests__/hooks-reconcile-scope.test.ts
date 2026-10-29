@@ -954,6 +954,36 @@ describe('reconcileTeamHooksForConfig — team hooks in the main checkout', () =
     }
   });
 
+  it('removes the PowerShell-gated main checkout copy when a linked worktree relocates it', async () => {
+    await writeYaml(STOP_LINT);
+    const { main, worktree } = await mainWithWorktree();
+    const other = await fse.realpath(await fse.mkdtemp(path.join(os.tmpdir(), 'teamai-recon-other-')));
+    const removed = path.join(other, 'removed-worktree');
+    const powershellGate = (root: string, command: string): string => {
+      const prefix = /[\\/]$/.test(root) ? root : `${root}\\`;
+      return `$teamaiPwd = $PWD.Path; if (($teamaiPwd.Equals('${root}', [StringComparison]::OrdinalIgnoreCase) -or $teamaiPwd.StartsWith('${prefix}', [StringComparison]::OrdinalIgnoreCase))) { ${command} }`;
+    };
+    try {
+      const roots = [main, worktree, removed, other];
+      await fse.writeJson(path.join(home, '.claude', 'settings.json'), {
+        hooks: { Stop: roots.map((root) => ({ description: '[teamai:hook:lint] run lint at stop', hooks: [{ type: 'command', command: powershellGate(root, 'npm run lint') }] })) },
+      });
+      await fse.outputJson(path.join(home, '.teamai', 'managed-hooks.json'), {
+        claude: roots.map((root) => ({ id: 'lint', event: 'Stop', command: powershellGate(root, 'npm run lint') })),
+      });
+
+      await reconcileTeamHooksForConfig(teamConfig, { ...localConfig(), projectRoot: worktree });
+
+      const stop = (await claudeSettings()).hooks.Stop.map((h) => h.hooks[0].command);
+      expect(stop.filter((command) => command.includes('teamai hook-dispatch'))).toHaveLength(1);
+      expect(stop.filter((command) => command.includes('npm run lint'))).toEqual([powershellGate(other, 'npm run lint')]);
+      expect(((await manifest()).claude as unknown as Array<{ command: string }>).map((r) => r.command)).toEqual([powershellGate(other, 'npm run lint')]);
+    } finally {
+      await fse.remove(worktree);
+      await fse.remove(other);
+    }
+  });
+
   it('creates nothing in the business repo when the team has no hooks', async () => {
     await reconcileTeamHooksForConfig(teamConfig, localConfig());
 
