@@ -16,6 +16,8 @@
     ],
     "typescript/no-floating-promises": "warn",
     "typescript/no-misused-promises": "warn",
+    // Prefer a single-match search when only the first matching item is needed.
+    "unicorn/prefer-array-find": "warn",
     "typescript/no-base-to-string": "off",
     "typescript/no-duplicate-type-constituents": "off",
     "typescript/no-implied-eval": "off",
